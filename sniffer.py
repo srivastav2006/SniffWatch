@@ -1,15 +1,16 @@
-
 #!/usr/bin/env python3
 """
-Scapy-based packet sniffer (cross-platform)
+Scapy-based packet sniffer (cross-platform) - Docker Enhanced
 - Capture live traffic
 - Parse Ethernet, IP/IPv6, TCP/UDP/ICMP
 - Optional protocol filter (tcp/udp/icmp/ipv6) and BPF filter
 - Save to .pcap
+- Docker environment support
 """
 import argparse
 import datetime as dt
 import sys
+import os
 from typing import Optional, List
 
 try:
@@ -41,6 +42,8 @@ def protocol_match(pkt, proto: Optional[str]) -> bool:
 
 def summarize(pkt) -> str:
     parts = []
+    node_name = os.getenv('NODE_NAME', 'unknown')
+    parts.append(f"[{node_name}]")
 
     # Link-layer (Ethernet)
     if Ether in pkt:
@@ -82,7 +85,7 @@ def list_interfaces():
         print("Could not list interfaces:", e)
 
 def main():
-    parser = argparse.ArgumentParser(description="Packet Sniffer (Scapy)")
+    parser = argparse.ArgumentParser(description="Packet Sniffer (Scapy) - Docker Enhanced")
     parser.add_argument("-i", "--iface", help="Interface name to sniff on (default: auto)")
     parser.add_argument("-c", "--count", type=int, default=0, help="Packets to capture (0 = unlimited)")
     parser.add_argument("-p", "--proto", choices=["tcp","udp","icmp","ipv6"], help="Protocol filter")
@@ -97,7 +100,12 @@ def main():
         list_interfaces()
         sys.exit(0)
 
+    # Create directories if they don't exist
+    os.makedirs('/app/captures', exist_ok=True)
+    os.makedirs('/app/logs', exist_ok=True)
+
     iface = args.iface or conf.iface  # default interface
+    node_name = os.getenv('NODE_NAME', 'unknown')
 
     captured: List = []
     def on_packet(pkt):
@@ -108,7 +116,7 @@ def main():
         if not args.quiet:
             print(f"[{human_ts()}] {summarize(pkt)}")
 
-    print(f"[*] Sniffing on interface: {iface}")
+    print(f"[*] {node_name} - Sniffing on interface: {iface}")
     if args.bpf:
         print(f"[*] BPF filter: {args.bpf}")
     if args.proto:
@@ -127,14 +135,14 @@ def main():
             count=args.count if args.count > 0 else 0
         )
     except KeyboardInterrupt:
-        print("\n[!] Stopped by user.")
+        print(f"\n[!] {node_name} - Stopped by user.")
     finally:
         if args.pcap and captured:
             try:
                 wrpcap(args.pcap, captured)
-                print(f"[+] Saved {len(captured)} packets to {args.pcap}")
+                print(f"[+] {node_name} - Saved {len(captured)} packets to {args.pcap}")
             except Exception as e:
-                print(f"[!] Failed to save pcap: {e}")
+                print(f"[!] {node_name} - Failed to save pcap: {e}")
 
 if __name__ == "__main__":
     main()
