@@ -1,19 +1,46 @@
 #!/usr/bin/env python3
 """
-Basic IDS on top of Scapy capture (separate from sniffer.py)
+Basic IDS on top of Scapy capture (separate from sniffer.py) - Docker Enhanced
 - Detects:
   * Port scan: many unique destination ports from same source within a window
   * Flood: too many packets from same source within a window
 - Tunable thresholds via CLI args
+- Docker distributed monitoring support
 """
 import argparse
 import time
+import os
+import json
 from collections import defaultdict, deque
+from datetime import datetime
 
 from scapy.all import sniff, conf, IP, TCP, UDP
 
+def log_alert(alert_type, message):
+    """Log alerts to file and stdout"""
+    node_name = os.getenv('NODE_NAME', 'unknown')
+    timestamp = datetime.now().isoformat()
+    
+    alert_data = {
+        'timestamp': timestamp,
+        'node': node_name,
+        'type': alert_type,
+        'message': message
+    }
+    
+    # Log to stdout
+    print(f"[ALERT][{alert_type}][{node_name}] {message}")
+    
+    # Log to file
+    log_file = f"/app/logs/alerts_{node_name}.json"
+    try:
+        with open(log_file, 'a') as f:
+            f.write(json.dumps(alert_data) + '\n')
+    except Exception as e:
+        print(f"[ERROR] Could not write to log file: {e}")
+
 def main():
-    parser = argparse.ArgumentParser(description="Basic IDS (port scan + flood detection)")
+    parser = argparse.ArgumentParser(description="Basic IDS (port scan + flood detection) - Docker Enhanced")
     parser.add_argument("-i", "--iface", help="Interface to sniff on (default: auto)")
     parser.add_argument("--bpf", help='BPF filter (e.g., "tcp or udp")')
     parser.add_argument("-c", "--count", type=int, default=0, help="Packets to capture (0 = unlimited)")
@@ -24,7 +51,12 @@ def main():
 
     args = parser.parse_args()
 
+    # Create directories if they don't exist
+    os.makedirs('/app/logs', exist_ok=True)
+    os.makedirs('/app/captures', exist_ok=True)
+
     iface = args.iface or conf.iface
+    node_name = os.getenv('NODE_NAME', 'collector')
 
     # For flood detection: map src_ip -> deque[timestamps]
     pkt_times = defaultdict(deque)
@@ -66,7 +98,7 @@ def main():
         pkt_times[src].append(now)
         purge_old(src, now)
         if len(pkt_times[src]) > flood_thresh:
-            print(f"[ALERT][FLOOD] {src} -> *  : {len(pkt_times[src])} packets/{window}s")
+            log_alert("FLOOD", f"{src} -> * : {len(pkt_times[src])} packets/{window}s")
 
         # ---- PORT SCAN detection (unique dest ports per window) ----
         dport = None
@@ -84,16 +116,16 @@ def main():
                 port_sets[src].add(dport)
 
             if len(port_sets[src]) > port_thresh:
-                print(f"[ALERT][PORT-SCAN] {src} -> many ports ({len(port_sets[src])}) in {window}s")
+                log_alert("PORT-SCAN", f"{src} -> many ports ({len(port_sets[src])}) in {window}s")
 
         if not args.quiet:
             proto = "TCP" if TCP in pkt else "UDP" if UDP in pkt else f"IP({pkt[IP].proto})"
-            base = f"{time.strftime('%H:%M:%S')} Packet: {src} -> {dst} [{proto}]"
+            base = f"[{node_name}] {time.strftime('%H:%M:%S')} Packet: {src} -> {dst} [{proto}]"
             if dport is not None:
                 base += f" dport={dport}"
             print(base)
 
-    print(f"[*] IDS on interface: {iface}")
+    print(f"[*] IDS {node_name} on interface: {iface}")
     if args.bpf:
         print(f"[*] BPF filter: {args.bpf}")
     print(f"[*] Window={window}s | Port-threshold={port_thresh} | Flood-threshold={flood_thresh}")
@@ -107,7 +139,7 @@ def main():
             count=args.count if args.count > 0 else 0
         )
     except KeyboardInterrupt:
-        print("\n[!] IDS stopped by user.")
+        print(f"\n[!] IDS {node_name} stopped by user.")
 
 if __name__ == "__main__":
     main()
