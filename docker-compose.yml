@@ -1,123 +1,85 @@
 version: '3.8'
 
 services:
-  # Central IDS collector
-  ids-central:
+  # IDS Central Collector
+  ids-collector:
     build: .
-    container_name: ids-central
-    hostname: ids-central
-    environment:
-      - NODE_TYPE=IDS
-      - NODE_ID=central
+    container_name: ids-collector
+    command: python sniffer_ids.py -i eth0 --window 10 --port-threshold 15 --flood-threshold 80
     networks:
       - monitoring-network
-    volumes:
-      - ./captures:/app/captures
-      - ./logs:/app/logs
     cap_add:
       - NET_ADMIN
       - NET_RAW
     privileged: true
-    command: >
-      python sniffer_ids.py 
-      --window 10 
-      --port-threshold 20 
-      --flood-threshold 100
-    restart: unless-stopped
-    ports:
-      - "8080:8080"  # For potential web interface
+    volumes:
+      - ./logs:/app/logs
+      - ./captures:/app/captures
+    environment:
+      - NODE_NAME=collector
+      - IDS_MODE=collector
 
-  # Sniffer node 1
+  # Sniffer Node 1
   sniffer-node1:
     build: .
     container_name: sniffer-node1
-    hostname: sniffer-node1
-    environment:
-      - NODE_TYPE=SNIFFER
-      - NODE_ID=node1
-      - IDS_CENTRAL_HOST=ids-central
+    command: python sniffer.py -i eth0 --pcap /app/captures/node1.pcap -q
     networks:
       - monitoring-network
-    volumes:
-      - ./captures:/app/captures
-      - ./logs:/app/logs
     cap_add:
       - NET_ADMIN
       - NET_RAW
     privileged: true
-    command: >
-      python distributed_sniffer.py 
-      --node-id node1 
-      --ids-host ids-central 
-      --ids-port 9999
-    restart: unless-stopped
-    depends_on:
-      - ids-central
+    volumes:
+      - ./captures:/app/captures
+      - ./logs:/app/logs
+    environment:
+      - NODE_NAME=node1
+      - IDS_COLLECTOR=ids-collector
 
-  # Sniffer node 2
+  # Sniffer Node 2
   sniffer-node2:
     build: .
     container_name: sniffer-node2
-    hostname: sniffer-node2
-    environment:
-      - NODE_TYPE=SNIFFER
-      - NODE_ID=node2
-      - IDS_CENTRAL_HOST=ids-central
+    command: python sniffer.py -i eth0 --pcap /app/captures/node2.pcap -q
     networks:
       - monitoring-network
-    volumes:
-      - ./captures:/app/captures
-      - ./logs:/app/logs
     cap_add:
       - NET_ADMIN
       - NET_RAW
     privileged: true
-    command: >
-      python distributed_sniffer.py 
-      --node-id node2 
-      --ids-host ids-central 
-      --ids-port 9999
-    restart: unless-stopped
-    depends_on:
-      - ids-central
+    volumes:
+      - ./captures:/app/captures
+      - ./logs:/app/logs
+    environment:
+      - NODE_NAME=node2
+      - IDS_COLLECTOR=ids-collector
 
-  # Sniffer node 3
+  # Sniffer Node 3
   sniffer-node3:
     build: .
     container_name: sniffer-node3
-    hostname: sniffer-node3
-    environment:
-      - NODE_TYPE=SNIFFER
-      - NODE_ID=node3
-      - IDS_CENTRAL_HOST=ids-central
+    command: python sniffer.py -i eth0 --pcap /app/captures/node3.pcap -q
     networks:
       - monitoring-network
-    volumes:
-      - ./captures:/app/captures
-      - ./logs:/app/logs
     cap_add:
       - NET_ADMIN
       - NET_RAW
     privileged: true
-    command: >
-      python distributed_sniffer.py 
-      --node-id node3 
-      --ids-host ids-central 
-      --ids-port 9999
-    restart: unless-stopped
-    depends_on:
-      - ids-central
+    volumes:
+      - ./captures:/app/captures
+      - ./logs:/app/logs
+    environment:
+      - NODE_NAME=node3
+      - IDS_COLLECTOR=ids-collector
 
 networks:
   monitoring-network:
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.20.0.0/16
 
 volumes:
   captures:
-    driver: local
   logs:
-    driver: local
