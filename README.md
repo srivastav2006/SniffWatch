@@ -1,76 +1,159 @@
-# Packet Sniffer + Basic IDS (Python)
 
-A clean, beginner-friendly **packet sniffer** using **Scapy**, plus a **separate basic IDS** script that detects
-simple suspicious behaviors (port scans and packet floods). Includes a Linux-only raw-socket demo.
+# Dockerized Packet Sniffer + Basic IDS
+
+A containerized, distributed **packet sniffer** and **IDS** system using **Docker** and **Scapy**. 
+Features multiple sniffer nodes with centralized alert collection for scalable network monitoring.
 
 ## Features
-- Sniffer (cross-platform via Scapy)
-  - Parse Ethernet → IP/IPv6 → TCP/UDP/ICMP
-  - Optional protocol filter and BPF filter (e.g., "port 80")
-  - Save captures to **.pcap** (open in Wireshark)
-- IDS (separate script)
-  - **Port Scan detection**: many distinct destination ports from same source in a time window
-  - **Flood detection**: too many packets from same source in a time window
-  - Tunable thresholds via CLI args
-- Raw socket demo (Linux only) for low-level learning
+- **Dockerized Architecture**: Portable containers that run on any Docker-enabled system
+- **Distributed Monitoring**: Multiple sniffer nodes with centralized IDS collector
+- **Docker Compose**: Easy multi-container orchestration
+- **Persistent Storage**: Captures and logs saved to host volumes
+- **Network Isolation**: Custom Docker network for secure inter-container communication
 
 ## Quick Start
 
-### 1) Create venv and install
-```bash
-python -m venv .venv
-# Linux/macOS:
-source .venv/bin/activate
-# Windows:
-# .venv\Scripts\activate
+### 1) Build and Start
+Make run script executable
+`chmod +x docker-run.sh`
 
-pip install -r requirements.txt
-Windows users: Install Npcap first (Scapy uses it under the hood).
-```
+Start the entire system
+`./docker-run.sh`
 
-### 2) List interfaces (optional)
-```bash
 
-python sniffer.py --list
-```
-### 3) Run the sniffer
-```bash
 
-# auto-picks default interface
-sudo python sniffer.py
+### 2) Manual Docker Compose
+Build images
+`docker-compose build`
 
-# choose interface
-sudo python sniffer.py -i eth0
+Start distributed monitoring
+`docker-compose up -d`
 
-# only TCP + BPF (port 80)
-sudo python sniffer.py -p tcp --bpf "port 80"
+View logs
+`docker-compose logs -f ids-collector`
+`docker-compose logs -f sniffer-node1`
 
-# save to pcap
-sudo python sniffer.py --pcap capture.pcap
-```
-### 4) Run the IDS (suspicious detection)
-```bash
 
-# defaults: window=10s, port-scan threshold=20 unique ports, flood=100 pkts/10s
-sudo python sniffer_ids.py -i eth0
 
-# tweak thresholds/window
-sudo python sniffer_ids.py -i eth0 --window 15 --port-threshold 30 --flood-threshold 200
+### 3) Individual Container Usage
+Run standalone sniffer
+`docker run --rm -it --cap-add=NET_ADMIN --cap-add=NET_RAW
+-v $(pwd)/captures:/app/captures
+packet-sniffer python sniffer.py -i eth0`
 
-# add a BPF filter (optional)
-sudo python sniffer_ids.py -i eth0 --bpf "tcp"
-```
-### 5) Linux raw-socket demo (optional)
-```bash
+Run IDS
+`docker run --rm -it --cap-add=NET_ADMIN --cap-add=NET_RAW
+-v $(pwd)/logs:/app/logs
+packet-sniffer python sniffer_ids.py -i eth0`
 
-sudo python raw_sniffer_linux.py
-```
-### Project Structure
-```graphql
+
+
+## Docker Architecture
+
+### Services
+- **ids-collector**: Central IDS node for threat detection
+- **sniffer-node1/2/3**: Distributed packet capture nodes
+- **monitoring-network**: Isolated Docker bridge network
+
+### Volumes
+- `./captures`: Packet capture files (.pcap)
+- `./logs`: Alert logs (JSON format)
+
+### Network Requirements
+- Containers need `NET_ADMIN` and `NET_RAW` capabilities
+- Privileged mode for raw socket access
+- Custom bridge network (172.20.0.0/16)
+
+## File Structure
+packet-sniffer/
+├── Dockerfile # Container build instructions
+├── docker-compose.yml # Multi-container orchestration
+├── docker-run.sh # Helper startup script
+├── sniffer.py # Enhanced Scapy sniffer
+├── sniffer_ids.py # Enhanced IDS with logging
+├── requirements.txt # Python dependencies
+├── .dockerignore # Docker build exclusions
+├── captures/ # Volume for .pcap files
+├── logs/ # Volume for alert logs
+└── README.md # This file
+
+
+## Monitoring
+
+### View Real-time Alerts
+Watch IDS alerts
+`docker-compose logs -f ids-collector`
+
+Watch specific node
+`docker-compose logs -f sniffer-node1`
+
+
+### Access Captured Data
+List captured packets
+`ls -la captures/`
+
+View alert logs
+`cat logs/alerts_collector.json | jq .`
+
+
+
+## Scaling
+
+### Add More Nodes
+Edit `docker-compose.yml` to add additional sniffer nodes:
+
+sniffer-node4:
+build: .
+container_name: sniffer-node4
+command: `python sniffer.py -i eth0 --pcap /app/captures/node4.pcap -q`
+
+... rest of configuration
+
+
+### Horizontal Scaling
+Scale sniffer nodes
+`docker-compose up --scale sniffer-node1=3 -d`
+
+
+
+## Cleanup
+Stop all containers
+`docker-compose down`
+
+Remove volumes (CAUTION: deletes captured data)
+`docker-compose down -v`
+
+Remove images
+`docker rmi packet-sniffer_ids-collector`
+
+
+Complete File Structure
 
 packet-sniffer/
-├─ sniffer.py               # Scapy-based sniffer (cross-platform)
-├─ sniffer_ids.py           # Basic IDS: port scan + flood detection (separate)
-├─ raw_sniffer_linux.py     # Raw socket Linux-only demo
-├─ requirements.txt
-└─ README.md
+├── Dockerfile
+├── docker-compose.yml
+├── docker-run.sh
+├── sniffer.py
+├── sniffer_ids.py
+├── requirements.txt
+├── .dockerignore
+├── README.md
+├── captures/          # Created automatically
+└── logs/             # Created automatically
+File Locations and Usage
+Root Directory: /packet-sniffer/
+
+Dockerfile: /packet-sniffer/Dockerfile
+
+Compose File: /packet-sniffer/docker-compose.yml
+
+Main Scripts: /packet-sniffer/sniffer.py, /packet-sniffer/sniffer_ids.py
+
+Helper Script: /packet-sniffer/docker-run.sh
+
+Dependencies: /packet-sniffer/requirements.txt
+
+Docker Ignore: /packet-sniffer/.dockerignore
+
+Documentation: /packet-sniffer/README.md
+
